@@ -9,12 +9,8 @@ async function main() {
   console.log("Keyboards contract address:", keyboardsContract.address);
 
   const keyboardTxn1 = await keyboardsContract.create(0, true, "Sepia");
-  await keyboardTxn1.wait();
-
-  const keyboardTxn2 = await keyboardsContract
-    .connect(p2)
-    .create(1, false, "grayscale");
-  await keyboardTxn2.wait();
+  const keyboardTxnReceipt = await keyboardTxn1.wait();
+  console.log(keyboardTxnReceipt.events);
 
   keyboards = await keyboardsContract.getKeyboards();
   console.log("Keyboards:", keyboards);
@@ -27,10 +23,11 @@ async function main() {
     hre.ethers.utils.formatEther(balanceBefore)
   );
 
-  const tipTxn = await keyboardsContract.tip(1, {
+  const tipTxn = await keyboardsContract.connect(p2).tip(0, {
     value: hre.ethers.utils.parseEther("1000"),
   }); // tip the 2nd keyboard as owner!
-  await tipTxn.wait();
+  const tipTxnReceipt = await tipTxn.wait();
+  console.log(tipTxnReceipt.events);
 
   const balanceAfter = await hre.ethers.provider.getBalance(
     p2.address

@@ -1,71 +1,30 @@
 import { useState, useEffect } from "react";
+import { UserCircleIcon } from "@heroicons/react/solid";
+import { toast } from "react-hot-toast";
+
 import PrimaryButton from "../components/primary-button";
 import Keyboard from "../components/keyboard";
-import addressesEqual from "../utils/addressesEqual";
 import TipButton from "../components/tip-button";
-import { UserCircleIcon } from "@heroicons/react/solid"
+import { useMetaMaskAccount } from "../components/meta-mask-account-provider";
+
+import addressesEqual from "../utils/addressesEqual";
+import getKeyboardsContract from "../utils/getKeyboardsContract";
 
 import { ethers } from "ethers";
-import abi from "../utils/Keyboards.json";
 
 export default function Home() {
-  const [ethereum, setEthereum] = useState(undefined);
-  const [connectedAccount, setConnectedAccount] = useState(undefined);
+  const { ethereum, connectedAccount, connectAccount } = useMetaMaskAccount();
   const [keyboards, setKeyboards] = useState([]);
   const [keyboardsLoading, setKeyboardsLoading] = useState(false);
 
-  const contractAddress = "0xa0DBCbED1146c21c738C6CB001DFB262B6Ba0C54";
-  const contractABI = abi.abi;
-
-  const handleAccounts = (accounts) => {
-    if (accounts.length > 0) {
-      console.log("Authorized account:", accounts[0]);
-      setConnectedAccount(accounts[0]);
-    } else {
-      console.log("No account authorized");
-    }
-  };
-
-  const getConnectedAccount = async () => {
-    if (window.ethereum) {
-      setEthereum(window.ethereum);
-    }
-
-    if (ethereum) {
-      const accounts = await ethereum.request({ method: "eth_accounts" });
-      handleAccounts(accounts);
-    }
-  };
-
-  useEffect(() => {
-    getConnectedAccount();
-  });
-
-  const connectAccount = () => {
-    if (!ethereum) {
-      alert("MetaMask is required to connect an account");
-      return;
-    }
-
-    const accounts = ethereum.request({ method: "eth_requestAccounts" });
-    handleAccounts(accounts);
-  };
+  const keyboardsContract = getKeyboardsContract(ethereum);
 
   const getKeyboards = async () => {
-    if (ethereum && connectedAccount) {
+    if (keyboardsContract && connectedAccount) {
       setKeyboardsLoading(true);
 
       try {
-        const provider = new ethers.providers.Web3Provider(ethereum);
-        const signer = provider.getSigner();
-
-        const contract = new ethers.Contract(
-          contractAddress,
-          contractABI,
-          signer
-        );
-
-        const keyboards = await contract.getKeyboards();
+        const keyboards = await keyboardsContract.getKeyboards();
         console.log("Retrieved keyboards...", keyboards);
 
         setKeyboards(keyboards);
@@ -75,7 +34,25 @@ export default function Home() {
     }
   };
 
-  useEffect(() => getKeyboards(), [connectedAccount]);
+  useEffect(() => getKeyboards(), [!!keyboardsContract, connectedAccount]);
+
+  const addContractEventHandlers = () => {
+    if (keyboardsContract && connectedAccount) {
+      keyboardsContract.on('KeyboardCreated', async (keyboard) => {
+        if (connectedAccount && !addressesEqual(keyboard.owner, connectedAccount)) {
+          toast('Somebody created a new keyboard!', { id: JSON.stringify(keyboard) })
+        }
+        await getKeyboards();
+      })
+
+      keyboardsContract.on('TipSent', (recipient, amount) => {
+        if (addressesEqual(recipient, connectedAccount)) {
+          toast(`You received a tip of ${ethers.utils.formatEther(amount)} eth!`, { id: recipient + amount });
+        }
+      })
+    }
+  }
+  useEffect(addContractEventHandlers, [!!keyboardsContract, connectedAccount]);
 
   if (!connectedAccount) {
     return (
@@ -99,7 +76,7 @@ export default function Home() {
                 {addressesEqual(owner, connectedAccount) ? (
                   <UserCircleIcon className="h-5 w-5 text-indigo-100" />
                 ) : (
-                  <TipButton ethereum={ethereum} index={i} />
+                  <TipButton keyboardsContract={keyboardsContract} index={i} />
                 )}
               </span>
             </div>
